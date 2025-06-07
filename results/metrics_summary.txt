@@ -1,0 +1,9 @@
+Learning rate: 0.1, Grid: 5x5, Sensitivity: 0.973, Specificity: 0.975
+Learning rate: 0.1, Grid: 10x10, Sensitivity: 0.987, Specificity: 0.987
+Learning rate: 0.1, Grid: 15x15, Sensitivity: 1.000, Specificity: 1.000
+Learning rate: 0.5, Grid: 5x5, Sensitivity: 0.967, Specificity: 0.968
+Learning rate: 0.5, Grid: 10x10, Sensitivity: 0.973, Specificity: 0.975
+Learning rate: 0.5, Grid: 15x15, Sensitivity: 1.000, Specificity: 1.000
+Learning rate: 0.9, Grid: 5x5, Sensitivity: 0.927, Specificity: 0.940
+Learning rate: 0.9, Grid: 10x10, Sensitivity: 0.987, Specificity: 0.987
+Learning rate: 0.9, Grid: 15x15, Sensitivity: 1.000, Specificity: 1.000

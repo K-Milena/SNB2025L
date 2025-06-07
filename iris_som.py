@@ -1,9 +1,23 @@
+# === ZAAWANSOWANA ANALIZA DLA ETAPU 3 ===
 import numpy as np
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from sklearn.metrics import confusion_matrix, classification_report
+import os
+
+# === PARAMETRY ===
+learning_rates = [0.1, 0.5, 0.9]
+grid_sizes = [(5, 5), (10, 10), (15, 15)]
+num_epochs = 50
+
+# === DANE ===
+iris = load_iris()
+data = iris.data
+labels = iris.target
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(data)
 
 # === KLASA SOM ===
 class SOM:
@@ -60,104 +74,84 @@ class SOM:
     def map_input(self, data):
         return [self._find_bmu(x)[0] for x in data]
 
-# === ŁADOWANIE DANYCH ===
-iris = load_iris()
-data = iris.data
-labels = iris.target
-scaler = MinMaxScaler()
-data_scaled = scaler.fit_transform(data)
+# === WYNIKI ===
+metrics_summary = []
+os.makedirs("results", exist_ok=True)
 
-# === INICJALIZACJA I TRENING ===
-som = SOM(x=10, y=10, input_len=4, learning_rate=0.5, num_epochs=50)
-som.train(data_scaled)
-mapped = som.map_input(data_scaled)
+for lr in learning_rates:
+    for grid_x, grid_y in grid_sizes:
+        # Trenowanie SOM
+        som = SOM(x=grid_x, y=grid_y, input_len=4, learning_rate=lr, num_epochs=num_epochs)
+        som.train(data_scaled)
+        mapped = som.map_input(data_scaled)
 
-# === MAPOWANIE KLAS DO NEURONÓW ===
-neuron_label_map = defaultdict(list)
-for pos, label in zip(mapped, labels):
-    neuron_label_map[tuple(pos)].append(label)
+        # Mapowanie klas
+        neuron_label_map = defaultdict(list)
+        for pos, label in zip(mapped, labels):
+            neuron_label_map[tuple(pos)].append(label)
+        neuron_class_map = {}
+        for neuron, classes in neuron_label_map.items():
+            neuron_class_map[neuron] = np.bincount(classes).argmax()
+        predictions = [neuron_class_map[tuple(bmu)] for bmu in mapped]
 
-# === ZAMIENIAMY NA DOMINUJĄCE KLASY DLA KAŻDEGO NEURONU ===
-neuron_class_map = {}
-for neuron, classes in neuron_label_map.items():
-    dominant_class = np.bincount(classes).argmax()  # Dominująca klasa
-    neuron_class_map[neuron] = dominant_class
+        # Metryki
+        conf_matrix = confusion_matrix(labels, predictions)
+        class_report = classification_report(labels, predictions, output_dict=True)
 
-# === GENERUJEMY PREDYKCJE NA PODSTAWIE MAPOWANIA NEURONÓW ===
-predictions = [neuron_class_map[tuple(bmu)] for bmu in mapped]
+        sensitivity = np.mean([class_report[str(i)]['recall'] for i in range(3)])
+        specificity = np.mean([class_report[str(i)]['precision'] for i in range(3)])
 
-# === PRINTUJ NEURONY Z DOMINUJĄCYMI KLASAMI ===
-for neuron, class_label in list(neuron_class_map.items())[:10]:
-    print(f"Neuron {neuron}: Class {class_label}")
+        metrics_summary.append({
+            'learning_rate': lr,
+            'grid_size': f"{grid_x}x{grid_y}",
+            'sensitivity': sensitivity,
+            'specificity': specificity
+        })
 
-# === PREDYKCJA I METRYKI ===
-conf_matrix = confusion_matrix(labels, predictions)
-print("Confusion Matrix:")
-print(conf_matrix)
+        # Zapis błędu uczenia - wykres
+        plt.figure()
+        plt.plot(som.errors)
+        plt.title(f"Error LR={lr}, Grid={grid_x}x{grid_y}")
+        plt.xlabel("Epoch")
+        plt.ylabel("Total Error")
+        plt.grid(True)
+        plt.savefig(f"results/error_lr{lr}_grid{grid_x}x{grid_y}.png")
+        plt.close()
 
-# Oblicz metryki klasyfikacyjne
-print("Classification Report:")
-print(classification_report(labels, predictions))
+        # **NOWOŚĆ: Zapis błędów uczenia do txt**
+        with open(f"results/training_errors_lr{lr}_grid{grid_x}x{grid_y}.txt", "w") as f_err:
+            for epoch_idx, err in enumerate(som.errors):
+                f_err.write(f"Epoch {epoch_idx+1}: {err}\n")
 
-# === WIZUALIZACJE ===
+# === WIZUALIZACJA PORÓWNANIA METRYK ===
+sens = [m['sensitivity'] for m in metrics_summary]
+specs = [m['specificity'] for m in metrics_summary]
+labels_bar = [f"lr={m['learning_rate']}, {m['grid_size']}" for m in metrics_summary]
 
-# 1. Błąd treningowy
-plt.figure(figsize=(8, 6))
-plt.plot(som.errors)
-plt.xlabel("Epoch")
-plt.ylabel("Total Error")
-plt.title("Learning Error over Time")
-plt.grid(True)
-plt.savefig("training_error.png")
+x = np.arange(len(metrics_summary))
+width = 0.35
+
+plt.figure(figsize=(12, 6))
+plt.bar(x - width/2, sens, width, label='Sensitivity')
+plt.bar(x + width/2, specs, width, label='Specificity')
+plt.xticks(x, labels_bar, rotation=45, ha="right")
+plt.ylabel("Score")
+plt.title("Sensitivity and Specificity across Configs")
+plt.legend()
+plt.tight_layout()
+plt.savefig("results/sensitivity_specificity_comparison.png")
 plt.close()
 
-# 2. Rozkład neuronów z przypisanymi klasami
-plt.figure(figsize=(8, 6))
-plt.scatter(
-    [neuron[0] for neuron in neuron_class_map.keys()],
-    [neuron[1] for neuron in neuron_class_map.keys()],
-    c=list(neuron_class_map.values()), cmap='viridis')
-plt.colorbar(label="Class")
-plt.xlabel("Sepal length (cm)")
-plt.ylabel("Sepal width (cm)")
-
-plt.title("Neuron Map with Class Labels")
-plt.xlabel("Neuron X")
-plt.ylabel("Neuron Y")
-plt.savefig("neuron_map.png")
-plt.close()
-
-# 3. Rozkład danych wejściowych na mapie
-
-# Tworzymy kolorową mapę ręcznie
-colors = ['blue', 'green', 'orange']
-names = ['setosa', 'versicolor', 'virginica']
-
-for i in range(3):
-    plt.scatter(data_scaled[labels == i, 0], data_scaled[labels == i, 1],
-                label=names[i], c=colors[i], alpha=0.7)
-
-plt.legend(title="Iris Class")
-plt.title("Input Data Distribution")
-plt.xlabel("Sepal length (cm)")
-plt.ylabel("Sepal width (cm)")
-plt.savefig("input_data_labeled.png")
-plt.close()
+# === ZAPIS TABELI METRYK ===
+with open("results/metrics_summary.txt", "w") as f:
+    for m in metrics_summary:
+        f.write(f"Learning rate: {m['learning_rate']}, Grid: {m['grid_size']}, "
+                f"Sensitivity: {m['sensitivity']:.3f}, Specificity: {m['specificity']:.3f}\n")
+        
+# Zapis błędów uczenia w txt
+with open(f"results/training_errors_lr{lr}_grid{grid_x}x{grid_y}.txt", "w") as f_err:
+    for epoch_idx, err in enumerate(som.errors):
+        f_err.write(f"Epoch {epoch_idx+1}: {err}\n")
 
 
-# 4. Macierz pomyłek
-plt.figure(figsize=(8, 6))
-plt.imshow(conf_matrix, interpolation='nearest', cmap='Blues')
-plt.title("Confusion Matrix")
-plt.colorbar()
-plt.xlabel("Predicted Labels")
-plt.ylabel("True Labels")
-plt.xticks(np.arange(3), [0, 1, 2])
-plt.yticks(np.arange(3), [0, 1, 2])
-plt.savefig("confusion_matrix.png")
-plt.close()
-
-# 5. Raport klasyfikacji - zapis do pliku
-with open("classification_report.txt", "w") as f:
-    f.write(classification_report(labels, predictions))
-    print("Classification report saved as classification_report.txt")
+print("Etap 3 DONE: metryki, wykresy i pliki zapisane w folderze 'results'")
